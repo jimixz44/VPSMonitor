@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPS Bot Monitor</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- xterm.js -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <style>
+        #xterm-container { width: 100%; height: 100%; padding: 8px; box-sizing: border-box; }
+        #xterm-container .xterm { height: 100%; }
+        .xterm-viewport { border-radius: 0 !important; }
+        /* Ensure xterm helper textarea can be focused and receives keyboard events */
+        #xterm-container .xterm-helper-textarea { opacity: 0 !important; pointer-events: auto !important; }
+        /* Prevent the modal overlay from intercepting clicks that should go to xterm */
+        #log-modal { outline: none; }
+        #terminal-main-window { outline: none; }
+    </style>
+</head>
+<body>
+    <!-- Alerts / Toasts Container -->
+    <div id="toast-container"></div>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen-container active">
+        <div class="glass-card login-card">
+            <h2>VPS Monitor</h2>
+            <p>Admin Authentication</p>
+            <form id="login-form">
+                <div class="input-group">
+                    <input type="text" id="username" required placeholder=" ">
+                    <label>Username</label>
+                </div>
+                <div class="input-group">
+                    <input type="password" id="password" required placeholder=" ">
+                    <label>Password</label>
+                </div>
+                <button type="submit" class="btn-primary">Login to System</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboard-screen" class="screen-container hidden">
+        <nav class="sidebar">
+            <div class="brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                <h2 id="vps-ip-title">Nexus VPS</h2>
+            </div>
+            <ul class="nav-links">
+                <li class="active"><a href="#" onclick="showSection('bots-section', event)"><i data-lucide="server"></i> Bot Manager</a></li>
+                <li><a href="#" onclick="showSection('launch-section', event)"><i data-lucide="plus-circle"></i> Launch New</a></li>
+                <li><a href="#" onclick="showSection('migrate-section', event)"><i data-lucide="send"></i> Migration</a></li>
+                <li><a href="#" onclick="showSection('settings-section', event)"><i data-lucide="settings"></i> Settings</a></li>
+                <li><a href="#" onclick="confirmLogout()"><i data-lucide="log-out"></i> Logout</a></li>
+            </ul>
+        </nav>
+        
+        <!-- Theme Toggle -->
+        <div class="theme-toggle">
+            <button id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Theme">
+                <i data-lucide="sun" style="width:16px;height:16px;"></i> <span class="hide-mobile">Light Mode</span>
+            </button>
+        </div>
+
+        <main class="content">
+            <!-- Bots Section -->
+            <section id="bots-section" class="main-section active">
+                <!-- Command Palette FAB (Mobile) -->
+                <button class="fab-command" onclick="openCommandPalette()" title="Command Palette (Ctrl+K)">
+                    <i data-lucide="command"></i>
+                </button>
+                
+                <!-- System Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>CPU Usage</h3>
+                        <div class="stat-value" id="cpu-stat">--%</div>
+                        <div class="progress-bar"><div class="fill" id="cpu-fill"></div></div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>RAM Usage</h3>
+                        <div class="stat-value" id="ram-stat">--%</div>
+                        <div class="progress-bar"><div class="fill" id="ram-fill"></div></div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Uptime</h3>
+                        <div class="stat-value" id="uptime-stat">--:--:--</div>
+                    </div>
+                </div>
+
+
+                <div class="section-header">
+                    <h2 style="display: flex; align-items: center; gap: 10px;">
+                        Running Sessions
+                        <div id="bot-count-badges" style="display: flex; gap: 8px; margin-left: 4px;">
+                            <span id="bot-count-running" style="background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.2); padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--success);"></span>0 Running
+                            </span>
+                            <span id="bot-count-idle" style="background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--danger);"></span>0 Idle
+                            </span>
+                        </div>
+                    </h2>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <div style="position: relative;">
+                            <i data-lucide="search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-muted);"></i>
+                            <input type="text" id="bot-search" placeholder="Search bot..." oninput="renderBots()" style="padding: 8px 12px 8px 30px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 6px; color: white; outline: none; font-size: 13px; width: 180px;">
+                        </div>
+                        <button class="btn-secondary" onclick="fetchBots()">
+                            <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="bots-grid" id="bots-container">
+                    <!-- Bot cards injected here -->
+                </div>
+            </section>
+
+            <!-- Launch Section -->
+            <section id="launch-section" class="main-section hidden">
+                <div class="section-header">
+                    <h2>Launch New Bot</h2>
+                </div>
+                <div class="glass-card upload-card">
+                    <form id="launch-form">
+                        <div class="input-group">
+                            <input type="text" id="new-bot-name" required placeholder=" ">
+                            <label>Screen Name (e.g. trading_bot)</label>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" id="new-bot-cmd" required placeholder=" ">
+                            <label>Command (e.g. node main.js)</label>
+                        </div>
+                        
+                        <div class="launch-tabs">
+                            <button type="button" class="tab-btn active" onclick="switchLaunchMode('upload', this)">Upload New Folder</button>
+                            <button type="button" class="tab-btn" onclick="switchLaunchMode('existing', this)">Use Existing VPS Folder</button>
+                        </div>
+                        
+                        <!-- Upload Mode -->
+                        <div id="mode-upload">
+                            <div class="upload-zone" id="upload-zone">
+                                <i data-lucide="upload-cloud" style="width: 48px; height: 48px; margin-bottom: 15px;"></i>
+                                <p>Drag & Drop your bot folder here</p>
+                                <span>or click to select folder</span>
+                                <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
+                            </div>
+                            <p id="upload-status" class="status-text"></p>
+                        </div>
+
+                        <!-- Existing Mode -->
+                        <div id="mode-existing" class="hidden" style="margin-bottom: 25px;">
+                            <div style="display: flex; gap: 10px; align-items: stretch;">
+                                <div class="input-group" style="margin-bottom: 0; flex: 1;">
+                                    <input type="text" id="existing-path" placeholder=" ">
+                                    <label>Absolute Directory Path (e.g. /home/bots)</label>
+                                </div>
+                                <button type="button" class="btn-secondary" onclick="openFileBrowser('picker_launch')" style="white-space: nowrap;"><i data-lucide="folder-search" style="width: 16px; height: 16px;"></i> Browse VPS</button>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-primary" id="btn-launch" disabled>Launch Bot</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings-section" class="main-section hidden">
+                <div class="section-header">
+                    <h2>System Settings</h2>
+                </div>
+                <div class="glass-card" style="max-width: 500px;">
+                    <form id="settings-form">
+                        <div class="input-group">
+                            <input type="text" id="set-username" placeholder=" ">
+                            <label>New Username (leave blank to keep current)</label>
+                        </div>
+                        <div class="input-group">
+                            <input type="password" id="set-new-password" placeholder=" ">
+                            <label>New Password (leave blank to keep current)</label>
+                        </div>
+                        <hr style="border:0; border-top: 1px solid var(--border); margin: 20px 0;">
+                        <div class="input-group">
+                            <input type="password" id="set-old-password" required placeholder=" ">
+                            <label>Current Password (Required to save)</label>
+                        </div>
+                        <button type="submit" class="btn-primary">Save Changes</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Migration Section -->
+            <section id="migrate-section" class="main-section hidden">
+                <div class="section-header">
+                    <h2><i data-lucide="send"></i> Migrate VPS</h2>
+                    <button class="btn-secondary" onclick="fetchBotsForMigration()"><i data-lucide="refresh-cw"></i> Refresh List</button>
+                </div>
+                
+                <div class="glass-card" style="max-width: 600px; margin: 0 auto;">
+                    <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <i data-lucide="shield-check" style="width: 18px; height: 18px; color: var(--success);"></i>
+                            <span style="color: var(--text-main); font-size: 14px; font-weight: 600;">Secure SSH Migration</span>
+                        </div>
+                        <p style="color: var(--text-muted); font-size: 13px; line-height: 1.5; margin-bottom: 14px;">
+                            Effortlessly transfer your bot files to a new VPS over an encrypted SFTP connection. No manual archiving or remote server setup required.
+                        </p>
+                        <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-main);">
+                            <span style="display: inline-flex; align-items: center; gap: 5px; background: rgba(245, 158, 11, 0.1); color: var(--warning); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.2);">
+                                <i data-lucide="zap" style="width: 14px; height: 14px;"></i> Fast Parallel Sync
+                            </span>
+                            <span style="display: inline-flex; align-items: center; gap: 5px; background: rgba(99, 102, 241, 0.1); color: var(--primary); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                                <i data-lucide="filter" style="width: 14px; height: 14px;"></i> Excludes <code>node_modules</code> / <code>.git</code>
+                            </span>
+                        </div>
+                    </div>
+
+                    <form id="migrate-form">
+                        <div style="margin-bottom: 20px;">
+                            <label style="display:block; margin-bottom: 8px; color:var(--text-muted); font-size: 13px;">Select Bot to Migrate</label>
+                            <!-- Custom dropdown -->
+                            <div class="custom-dropdown" id="migrate-bot-dropdown">
+                                <div class="custom-dropdown-trigger" id="migrate-bot-trigger" onclick="toggleBotDropdown()">
+                                    <span id="migrate-bot-label">Loading active bots...</span>
+                                    <i data-lucide="chevron-down" style="width:16px;height:16px;flex-shrink:0;transition:transform 0.2s;"></i>
+                                </div>
+                                <div class="custom-dropdown-menu" id="migrate-bot-menu">
+                                    <div class="custom-dropdown-item" style="color:var(--text-muted);">Loading...</div>
+                                </div>
+                            </div>
+                            <input type="hidden" id="migrate-bot-select" value="">
+
+                            <!-- Directory not set warning -->
+                            <div id="migrate-dir-warning" style="display:none; margin-top: 10px; padding: 12px 14px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; font-size: 13px; color: var(--warning); align-items: flex-start; gap: 10px;">
+                                <i data-lucide="alert-triangle" style="width:16px;height:16px;flex-shrink:0;margin-top:1px;"></i>
+                                <div>
+                                    <strong>Bot directory not set!</strong><br>
+                                    <span style="color:var(--text-muted);">Please set the bot folder first before migrating.</span><br>
+                                    <button type="button" onclick="openSetDirForBot()" style="margin-top:6px; background: rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:var(--warning); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
+                                        <i data-lucide="settings" style="width:12px;height:12px;"></i> Open Bot Configuration
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 style="margin: 20px 0 16px 0; font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">Target VPS Credentials</h3>
+                        
+                        <div class="input-group">
+                            <input type="text" id="migrate-ip" required placeholder=" ">
+                            <label>IP Address (e.g., 104.25.10.2)</label>
+                        </div>
+                        
+                        <div style="display: flex; gap: 15px;">
+                            <div class="input-group" style="flex: 1;">
+                                <input type="text" id="migrate-user" required value="root" placeholder=" ">
+                                <label>SSH Username</label>
+                            </div>
+                            <div class="input-group" style="flex: 1;">
+                                <input type="password" id="migrate-pass" required placeholder=" ">
+                                <label>SSH Password</label>
+                            </div>
+                        </div>
+
+                        <!-- Migration Status Box -->
+                        <div id="migrate-status-box" style="display: none; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-top: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span id="migrate-status-text" style="font-size: 13px; color: var(--text-muted);">Starting migration...</span>
+                                <span id="migrate-bot-counter" style="font-size: 12px; color: var(--text-muted);"></span>
+                            </div>
+                            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-bottom: 10px;">
+                                <div id="migrate-progress-bar" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.4s ease;"></div>
+                            </div>
+                            <!-- Per-bot log lines for Transfer All -->
+                            <div id="migrate-log-lines" style="display:none; max-height: 120px; overflow-y: auto; font-size: 12px; font-family: 'Consolas', monospace; margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px;"></div>
+                        </div>
+
+                        <div style="display: flex; gap: 15px; margin-top: 20px;">
+                            <button type="button" class="btn-secondary" id="btn-test-connection" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0; font-size: 14px; border-radius: 8px; font-weight: 500;" onclick="testSshConnection()">
+                                <i data-lucide="wifi" style="width: 18px; height: 18px;"></i> Test
+                            </button>
+                            <button type="submit" class="btn-primary" id="btn-migrate" style="flex: 2; display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0; font-size: 14px; border-radius: 8px; font-weight: 600;">
+                                <i data-lucide="rocket" style="width: 18px; height: 18px;"></i> <span id="btn-migrate-label">Start Migration</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Set Command Modal -->
+    <div class="modal-overlay" id="set-cmd-modal">
+        <div class="glass-card" style="max-width: 440px; width: 100%;">
+            <h2 style="margin-bottom: 10px;">Bot Configuration</h2>
+            <p style="color: var(--text-muted); margin-bottom: 25px; font-size: 14px;">
+                Configuration for: <span id="set-cmd-bot-name" style="color: var(--primary); font-weight: bold;"></span>
+            </p>
+            <form id="set-cmd-form">
+                <input type="hidden" id="set-cmd-name">
+                <div class="input-group">
+                    <input type="text" id="set-cmd-input" required placeholder=" ">
+                    <label>Main Command (e.g. node main.js)</label>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: stretch; margin-bottom: 25px;">
+                    <div class="input-group" style="margin-bottom: 0; flex: 1;">
+                        <input type="text" id="set-dir-input" required placeholder=" ">
+                        <label>Bot Directory (e.g. /root/bot)</label>
+                    </div>
+                    <button type="button" class="btn-secondary" onclick="openFileBrowser('picker_set', document.getElementById('set-dir-input').value || '/')" style="white-space: nowrap;"><i data-lucide="folder-search" style="width: 16px; height: 16px;"></i> Browse</button>
+                </div>
+                <!-- Crontab Auto-start Helper -->
+                <div style="margin-bottom: 20px; border-top: 1px solid var(--border); padding-top: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span style="font-size: 13px; color: var(--text-muted);"><i data-lucide="clock" style="width:14px;height:14px;vertical-align:middle;"></i> Auto-start on VPS reboot</span>
+                    </div>
+                    <div class="crontab-box" id="crontab-preview">
+                        <span style="color: var(--text-muted);">Fill command & directory above to generate...</span>
+                        <button type="button" class="crontab-copy-btn" id="crontab-copy-btn" onclick="copyCrontab()" style="display:none;"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copy</button>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn-secondary" style="flex: 1; justify-content: center;" onclick="closeSetCmdModal()">Cancel</button>
+                    <button type="submit" class="btn-primary" style="flex: 1;">Save Configuration</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- File Workspace Modal -->
+    <div class="modal-overlay" id="files-modal">
+        <div class="file-workspace editor-mode" id="file-workspace">
+            <div class="file-titlebar">
+                <div class="file-title">
+                    <i data-lucide="folder-open"></i>
+                    <span id="files-title">Files</span>
+                </div>
+                <div class="file-title-actions">
+                    <button id="files-btn-select" class="btn-secondary" onclick="selectFolder()">
+                        <i data-lucide="check"></i> Select Folder
+                    </button>
+                    <button id="file-save-btn" class="btn-secondary file-save-btn" onclick="saveCurrentFile()" disabled>
+                        <i data-lucide="save"></i> Save
+                    </button>
+                    <button class="close-btn" onclick="closeFileBrowser()"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div id="files-action-bar" class="file-pathbar">
+                <button class="icon-btn" onclick="goUpDirectory()" title="Up">
+                    <i data-lucide="corner-left-up"></i>
+                </button>
+                <input type="text" id="files-current-path" readonly>
+                <button class="icon-btn" onclick="refreshFilePanel()" title="Refresh">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+            </div>
+            <div class="file-workspace-body">
+                <aside class="file-sidebar">
+                    <div class="file-sidebar-header">
+                        <span>Explorer</span>
+                        <span id="file-root-label"></span>
+                    </div>
+                    <div class="file-tree" id="files-content">
+                        <div class="file-loading">Loading...</div>
+                    </div>
+                </aside>
+                <section class="file-editor-panel">
+                    <div class="file-tabs">
+                        <div class="file-tab" id="file-active-tab">
+                            <i data-lucide="file-text"></i>
+                            <span>No file open</span>
+                        </div>
+                    </div>
+                    <div class="file-editor-wrap">
+                        <div class="file-empty-state" id="file-empty-state">Select a text file to edit.</div>
+                        <div id="monaco-editor" class="monaco-editor-host hidden"></div>
+                        <textarea id="editor-content" class="file-editor-area hidden" spellcheck="false"></textarea>
+                    </div>
+                    <div class="file-statusbar">
+                        <span id="file-status-state">Ready</span>
+                        <span id="file-status-path"></span>
+                        <span id="file-status-size"></span>
+                    </div>
+                    <span id="editor-filename" class="hidden"></span>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- Terminal Modal (xterm.js) with Multi-tab -->
+    <div class="modal-overlay" id="log-modal">
+        <div class="terminal-window" id="terminal-main-window" style="display: flex; flex-direction: column;">
+            <div class="terminal-header" style="flex-shrink: 0; gap: 8px;">
+                <div class="term-tabs" id="term-tabs"></div>
+                <button class="term-tab-add" onclick="promptNewTerminalTab()" title="Open new terminal tab">+</button>
+                <div style="display: flex; gap: 8px; align-items: center; margin-left: 8px;">
+                    <button onclick="if(terminalSocket) terminalSocket.send(JSON.stringify({type:'input', data: String.fromCharCode(3)}))" class="btn-secondary" style="padding: 2px 8px; font-size: 11px; height: auto;" title="Send Ctrl+C (Stop process)">Ctrl+C</button>
+                    <button onclick="if(terminalSocket) terminalSocket.send(JSON.stringify({type:'input', data: String.fromCharCode(13)}))" class="btn-secondary" style="padding: 2px 8px; font-size: 11px; height: auto;" title="Send Enter">Enter</button>
+                    <span id="term-status" style="font-size: 12px; color: var(--text-muted);">●</span>
+                    <button class="close-btn" onclick="closeLog()"><i data-lucide="x"></i></button>
+                </div>
+            </div>
+            <div id="xterm-container" style="flex: 1; background: #0d0d0d; overflow: hidden; position: relative;"></div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="glass-card" style="max-width: 350px; text-align: center;">
+            <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+                <div style="background: rgba(239, 68, 68, 0.1); padding: 15px; border-radius: 50%;">
+                    <i data-lucide="alert-triangle" style="width: 48px; height: 48px; color: var(--danger);"></i>
+                </div>
+            </div>
+            <h2 id="confirm-title" style="margin-bottom: 10px;">Are you sure?</h2>
+            <p id="confirm-desc" style="color: var(--text-muted); margin-bottom: 25px; font-size: 14px;"></p>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-secondary" style="flex: 1; justify-content: center;" onclick="closeConfirmModal()">Cancel</button>
+                <button class="btn-primary" id="confirm-btn" style="flex: 1; background: var(--danger); justify-content: center;">Yes, Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Tab Modal -->
+    <div class="modal-overlay" id="new-tab-modal">
+        <div class="glass-card" style="max-width: 350px; width: 100%;">
+            <h2 style="margin-bottom: 15px;">Open New Tab</h2>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">Select an active bot to attach to the terminal.</p>
+            <div class="custom-dropdown" id="new-tab-dropdown">
+                <div class="custom-dropdown-trigger" onclick="toggleNewTabDropdown()">
+                    <span id="new-tab-label">Select a bot...</span>
+                    <i data-lucide="chevron-down" style="width:16px;height:16px;flex-shrink:0;transition:transform 0.2s;"></i>
+                </div>
+                <div class="custom-dropdown-menu" id="new-tab-menu">
+                    <!-- options injected by JS -->
+                </div>
+            </div>
+            <input type="hidden" id="new-tab-select" value="">
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn-secondary" style="flex: 1; justify-content: center;" onclick="closeNewTabModal()">Cancel</button>
+                <button class="btn-primary" style="flex: 1; justify-content: center;" onclick="confirmNewTab()">Open Tab</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Palette Modal -->
+    <div class="modal-overlay" id="command-palette-modal" style="align-items: flex-start; padding-top: 10vh;">
+        <div class="glass-card" style="max-width: 600px; width: 100%; padding: 0; overflow: hidden;">
+            <div style="display: flex; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.3);">
+                <i data-lucide="search" style="color: var(--text-muted); margin-right: 15px;"></i>
+                <input type="text" id="command-search-input" placeholder="Type a command or search bot... (Ctrl+K)" style="flex: 1; background: transparent; border: none; color: white; font-size: 16px; outline: none;">
+                <span style="font-size: 11px; color: var(--text-muted); background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; margin-left: 10px;">ESC</span>
+            </div>
+            <div id="command-list" style="max-height: 400px; overflow-y: auto; padding: 10px 0;">
+                <!-- Commands injected by JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    <script src="js/main.js"></script>
+    <script>
+      lucide.createIcons();
+    </script>
+</body>
+</html>
