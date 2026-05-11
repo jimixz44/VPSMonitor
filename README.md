@@ -4,7 +4,6 @@ A lightweight, modern web dashboard to manage, monitor, and deploy bot scripts o
 
 ![VPS Bot Manager Preview](preview.png)
 
-
 ## ✨ Features
 
 - **🚀 1-Click VPS Migration (Unique Feature):** Securely and seamlessly transfer your running bot scripts to a completely new VPS via SFTP. It automatically excludes heavy folders (`node_modules`, `.git`) and uses parallel sync for blazing-fast server transfers without needing manual zip files.
@@ -37,13 +36,9 @@ A lightweight, modern web dashboard to manage, monitor, and deploy bot scripts o
    ```bash
    node server.js
    ```
-   *(Or run it in the background using screen/pm2)*
 
 4. **Access the Dashboard:**
    Open your browser and navigate to `http://your-vps-ip:3000`.
-
-## 🔒 Security Note
-This project uses SQLite (`database.sqlite`) to store credentials. The `.gitignore` file is configured to prevent it from being pushed to public repositories. **Never commit your database or `.env` files.**
 
 ## 📝 License
 MIT License
